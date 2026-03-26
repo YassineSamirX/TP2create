@@ -1,0 +1,68 @@
+<!--
+  BT Mission XML — Reference/Documentation
+  ==========================================
+  This XML represents the BT structure conceptually.
+  The actual tree is built programmatically in bt_executor_node.py.
+  This file serves as documentation for the BT structure
+  and could be used with BehaviorTree.CPP if migrating to C++.
+-->
+<root main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <ReactiveSequence name="Root">
+
+      <!-- Manual Override Guard: checked EVERY tick -->
+      <ReactiveFallback name="ManualOverrideGuard">
+        <Condition ID="CheckNotManualOverride" topic="/manual_override"/>
+        <Action ID="TeleopPassthrough"/>
+      </ReactiveFallback>
+
+      <!-- Mission Sequence -->
+      <Sequence name="MissionSequence">
+
+        <!-- 1. Undock (skip if already undocked) -->
+        <Fallback name="UndockFallback">
+          <Condition ID="CheckAlreadyUndocked" topic="/is_docked"/>
+          <Action ID="UndockAction" action_server="/undock"/>
+        </Fallback>
+
+        <!-- 2. Save dock position -->
+        <Action ID="SaveDockPose"/>
+
+        <!-- 3. Start patrol timer -->
+        <Action ID="StartPatrolTimer"/>
+
+        <!-- 4. Patrol (time-limited) -->
+        <ReactiveSequence name="PatrolSubtree">
+          <Condition ID="CheckPatrolTimeNotExpired"/>
+
+          <Fallback name="PatrolLoop">
+            <!-- Normal patrol: waypoint → navigate → draw square -->
+            <Sequence name="NormalPatrol">
+              <Action ID="SelectNextWaypoint"/>
+              <Action ID="NavigateToWaypoint"/>
+              <Action ID="PerformSquareAtWaypoint"
+                      action_server="/draw_square"
+                      side_length="0.4"/>
+            </Sequence>
+
+            <!-- Recovery: wall-follow → new waypoint -->
+            <Sequence name="ObstacleRecovery">
+              <Action ID="BoundaryFollowBehavior"
+                      action_server="/boundary_follow"
+                      duration="15.0"/>
+              <Action ID="SetRecoveryWaypoint"/>
+            </Sequence>
+          </Fallback>
+        </ReactiveSequence>
+
+        <!-- 5. Return and dock -->
+        <Sequence name="ReturnAndDockSubtree">
+          <Action ID="NavigateToDockVicinity"/>
+          <Action ID="DockAction" action_server="/dock"/>
+          <Action ID="SetMissionComplete"/>
+        </Sequence>
+
+      </Sequence>
+    </ReactiveSequence>
+  </BehaviorTree>
+</root>

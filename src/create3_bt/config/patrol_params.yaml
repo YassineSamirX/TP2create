@@ -1,0 +1,32 @@
+# Patrol parameters
+patrol:
+  duration: 120.0              # Total patrol time in seconds
+  waypoints:                   # (x, y) pairs in odom frame
+    - [1.0, 0.0]
+    - [1.0, 1.0]
+    - [0.0, 1.0]
+
+# Draw square configuration
+draw_square:
+  side_length: 0.4             # meters
+  linear_speed: 0.15           # m/s
+  angular_speed: 0.5           # rad/s
+
+# Boundary follow configuration
+boundary_follow:
+  recovery_duration: 15.0      # seconds
+  linear_speed: 0.12           # m/s
+  angular_speed: 0.6           # rad/s
+  wall_distance: 0.35          # meters
+  front_threshold: 0.40        # meters
+
+# Navigation
+navigation:
+  arrival_threshold: 0.15      # meters
+  linear_speed: 0.2            # m/s max
+  angular_speed: 0.8           # rad/s max
+  obstacle_threshold: 0.35     # meters — triggers recovery
+
+# BT executor
+bt_executor:
+  tick_rate: 10.0              # Hz

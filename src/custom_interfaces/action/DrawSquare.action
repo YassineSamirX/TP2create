@@ -1,0 +1,10 @@
+# Goal: side length of the square to draw
+float64 side_length 0.5
+---
+# Result: total distance traveled
+float64 total_distance
+bool success
+---
+# Feedback: which side we are currently drawing (1-4) and progress
+int32 current_side
+float64 percent_complete

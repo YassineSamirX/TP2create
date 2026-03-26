@@ -1,0 +1,18 @@
+# twist_mux configuration
+# Priority-based velocity multiplexing:
+#   teleop (priority 10) > navigation (priority 1)
+#
+# During manual override, teleop publishes to /cmd_vel_teleop
+# During autonomous mode, BT/Nav publishes to /cmd_vel_nav
+# twist_mux outputs to /cmd_vel (what the robot subscribes to)
+twist_mux:
+  ros__parameters:
+    topics:
+      teleop:
+        topic: /cmd_vel_teleop
+        timeout: 0.5
+        priority: 10
+      navigation:
+        topic: /cmd_vel_nav
+        timeout: 0.5
+        priority: 1

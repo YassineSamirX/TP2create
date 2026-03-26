@@ -4,6 +4,7 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 
 import math
+import threading
 from enum import Enum
 
 from turtlesim.msg import Pose
@@ -62,6 +63,9 @@ class DrawBoundariesNode(Node):
         self.boundary_start_point = None
         self.corners_visited = 0
 
+        # Lock to prevent concurrent control loop re-entry
+        self._lock = threading.Lock()
+
         # Subscribers
         self.pose_sub = self.create_subscription(
             Pose, '/turtle1/pose', self.pose_callback, 10,
@@ -115,16 +119,22 @@ class DrawBoundariesNode(Node):
         if self.current_pose is None:
             return
 
-        if self.state == State.MOVE_TO_BOUNDARY:
-            self._do_move_to_boundary()
-        elif self.state == State.FOLLOW_BOUNDARY:
-            self._do_follow_boundary()
-        elif self.state == State.RETURN_HOME:
-            self._do_return_home()
-        elif self.state == State.MANUAL:
-            pass  # teleop_key node handles movement
-        elif self.state == State.IDLE:
-            pass
+        # Prevent re-entrant execution from multiple threads
+        if not self._lock.acquire(blocking=False):
+            return
+        try:
+            if self.state == State.MOVE_TO_BOUNDARY:
+                self._do_move_to_boundary()
+            elif self.state == State.FOLLOW_BOUNDARY:
+                self._do_follow_boundary()
+            elif self.state == State.RETURN_HOME:
+                self._do_return_home()
+            elif self.state == State.MANUAL:
+                pass  # teleop_key node handles movement
+            elif self.state == State.IDLE:
+                pass
+        finally:
+            self._lock.release()
 
     # ──────────────────────────────────────────────
     # State: MOVE_TO_BOUNDARY

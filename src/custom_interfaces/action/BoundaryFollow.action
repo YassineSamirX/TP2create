@@ -1,0 +1,10 @@
+# Goal: how long to run boundary following (seconds)
+float64 duration 15.0
+---
+# Result: distance traveled during wall-following
+float64 distance_traveled
+bool success
+---
+# Feedback: elapsed time and current minimum scan range
+float64 elapsed_time
+float64 min_range
