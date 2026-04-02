@@ -47,7 +47,7 @@ class DrawSquareServer(Node):
             callback_group=self.cb_group)
 
         # Publisher
-        self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel_nav', 10)
+        self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
 
         # Action server
         self._action_server = ActionServer(
@@ -62,9 +62,8 @@ class DrawSquareServer(Node):
 
         self.get_logger().info('DrawSquare action server ready on /draw_square')
 
-    # ──────────────────────────────────────────────
+
     # Odometry
-    # ──────────────────────────────────────────────
 
     def odom_callback(self, msg):
         self.current_x = msg.pose.pose.position.x
@@ -75,9 +74,8 @@ class DrawSquareServer(Node):
         cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
         self.current_yaw = math.atan2(siny_cosp, cosy_cosp)
 
-    # ──────────────────────────────────────────────
+
     # Action callbacks
-    # ──────────────────────────────────────────────
 
     def goal_callback(self, goal_request):
         self.get_logger().info(
@@ -133,7 +131,7 @@ class DrawSquareServer(Node):
             total_distance += side_length
             time.sleep(0.3)  # brief pause at corner
 
-            # ── Turn 90° CCW ──
+            # Turn 90° CCW
             target_yaw = self._normalize_angle(self.current_yaw + math.pi / 2)
 
             while True:
@@ -166,9 +164,9 @@ class DrawSquareServer(Node):
         self.get_logger().info(f'DrawSquare completed. Total distance: {total_distance:.2f}m')
         return result
 
-    # ──────────────────────────────────────────────
+
     # Helpers
-    # ──────────────────────────────────────────────
+
 
     def _stop(self):
         self.cmd_vel_pub.publish(Twist())
