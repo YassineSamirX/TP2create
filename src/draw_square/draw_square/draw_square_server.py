@@ -1,11 +1,5 @@
 """
 Draw Square Action Server — Assignment 1 Reuse
-================================================
-Velocity-based square-drawing action server for Create3.
-Drives each side using odometry feedback, turns 90° between sides.
-Works in base_link frame — no tf2 needed.
-
-Reused from Assignment 1, adapted for Create3 topic names.
 """
 
 import rclpy
@@ -21,6 +15,9 @@ from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from custom_interfaces.action import DrawSquare
 
+# ✅ AJOUT QoS
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
+
 
 class DrawSquareServer(Node):
 
@@ -30,20 +27,30 @@ class DrawSquareServer(Node):
         self.cb_group = ReentrantCallbackGroup()
 
         # Parameters
-        self.declare_parameter('linear_speed', 0.15)   # m/s — safe for Create3
-        self.declare_parameter('angular_speed', 0.5)   # rad/s
+        self.declare_parameter('linear_speed', 0.15)
+        self.declare_parameter('angular_speed', 0.5)
 
         self.linear_speed = self.get_parameter('linear_speed').value
         self.angular_speed = self.get_parameter('angular_speed').value
+
+        # ✅ AJOUT QoS BEST_EFFORT
+        qos_profile = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=10
+        )
 
         # Odom state
         self.current_x = 0.0
         self.current_y = 0.0
         self.current_yaw = 0.0
 
-        # Subscribers
+        # ✅ MODIFIÉ (10 → qos_profile)
         self.odom_sub = self.create_subscription(
-            Odometry, '/Robot5/odom', self.odom_callback, 10,
+            Odometry,
+            '/Robot5/odom',
+            self.odom_callback,
+            qos_profile,
             callback_group=self.cb_group)
 
         # Publisher
@@ -62,13 +69,11 @@ class DrawSquareServer(Node):
 
         self.get_logger().info('DrawSquare action server ready on /draw_square')
 
-
     # Odometry
 
     def odom_callback(self, msg):
         self.current_x = msg.pose.pose.position.x
         self.current_y = msg.pose.pose.position.y
-        # Quaternion to yaw
         q = msg.pose.pose.orientation
         siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
         cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
@@ -95,10 +100,10 @@ class DrawSquareServer(Node):
         result = DrawSquare.Result()
         total_distance = 0.0
 
-        rate = self.create_rate(20)  # 20 Hz control loop
+        rate = self.create_rate(20)
 
         for side in range(1, 5):
-            # ── Drive straight for side_length ──
+
             feedback_msg.current_side = side
             feedback_msg.percent_complete = (side - 1) / 4.0 * 100.0
             goal_handle.publish_feedback(feedback_msg)
@@ -128,9 +133,9 @@ class DrawSquareServer(Node):
 
             self._stop()
             total_distance += side_length
-            time.sleep(0.3)  # brief pause at corner
+            time.sleep(0.3)
 
-            # Turn 90° CCW
+            # Turn 90°
             target_yaw = self._normalize_angle(self.current_yaw + math.pi / 2)
 
             while True:
@@ -156,14 +161,14 @@ class DrawSquareServer(Node):
             feedback_msg.percent_complete = side / 4.0 * 100.0
             goal_handle.publish_feedback(feedback_msg)
 
-        # Done
         goal_handle.succeed()
         result.total_distance = total_distance
         result.success = True
-        self.get_logger().info(f'DrawSquare completed. Total distance: {total_distance:.2f}m')
-        return result
 
-    # Helpers
+        self.get_logger().info(
+            f'DrawSquare completed. Total distance: {total_distance:.2f}m')
+
+        return result
 
     def _stop(self):
         self.cmd_vel_pub.publish(Twist())
@@ -176,10 +181,12 @@ class DrawSquareServer(Node):
             angle += 2.0 * math.pi
         return angle
 
+
 def main(args=None):
     rclpy.init(args=args)
     node = DrawSquareServer()
     executor = MultiThreadedExecutor()
+
     try:
         rclpy.spin(node, executor=executor)
     except KeyboardInterrupt:
