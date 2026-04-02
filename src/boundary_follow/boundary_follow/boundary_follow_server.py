@@ -20,7 +20,14 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 FRONT_OBSTACLE_THRESHOLD = 100
 WALL_TOO_CLOSE_THRESHOLD = 300
 WALL_FOLLOW_THRESHOLD = 100
+WALL_LOST_THRESHOLD = 70
 IR_MIN = 15
+WALL_MEMORY_SECONDS = 1.0
+SEARCH_LINEAR_FACTOR = 0.9
+SEARCH_ANGULAR_FACTOR = 0.18
+TOO_CLOSE_LINEAR_FACTOR = 0.75
+FOLLOW_TURN_GAIN = 0.0012
+COMMAND_SMOOTHING = 0.5
 
 
 class BoundaryFollowServer(Node):
@@ -54,6 +61,9 @@ class BoundaryFollowServer(Node):
         }
 
         self.bump_detected = False
+        self.last_wall_seen_time = time.time()
+        self.last_linear_command = 0.0
+        self.last_angular_command = 0.0
 
         # ✅ MODIFIÉ (10 → qos_profile)
         self.ir_sub = self.create_subscription(
@@ -152,9 +162,9 @@ class BoundaryFollowServer(Node):
             if self.get_front_ir() > FRONT_OBSTACLE_THRESHOLD:
                 break
 
-            twist = Twist()
-            twist.linear.x = self.linear_speed * 0.3
-            twist.angular.z = -self.angular_speed * 0.5
+            twist = self._make_smoothed_twist(
+                self.linear_speed * SEARCH_LINEAR_FACTOR,
+                -self.angular_speed * SEARCH_ANGULAR_FACTOR)
             self.cmd_vel_pub.publish(twist)
             rate.sleep()
 
@@ -176,12 +186,17 @@ class BoundaryFollowServer(Node):
             front_ir = self.get_front_ir()
             right_ir = self.get_right_ir()
 
-            twist = Twist()
+            if right_ir > WALL_LOST_THRESHOLD:
+                self.last_wall_seen_time = time.time()
+
+            target_linear = 0.0
+            target_angular = 0.0
 
             if self.bump_detected:
                 self._stop()
                 time.sleep(0.1)
 
+                twist = Twist()
                 twist.linear.x = -self.linear_speed
                 self.cmd_vel_pub.publish(twist)
                 time.sleep(0.5)
@@ -194,23 +209,32 @@ class BoundaryFollowServer(Node):
                 self.bump_detected = False
 
             elif front_ir > FRONT_OBSTACLE_THRESHOLD:
-                twist.linear.x = 0.0
-                twist.angular.z = self.angular_speed
+                target_linear = 0.0
+                target_angular = self.angular_speed
 
             elif right_ir > WALL_TOO_CLOSE_THRESHOLD:
-                twist.linear.x = self.linear_speed * 0.5
-                twist.angular.z = self.angular_speed * 0.4
+                target_linear = self.linear_speed * TOO_CLOSE_LINEAR_FACTOR
+                target_angular = self.angular_speed * 0.35
 
             elif right_ir > WALL_FOLLOW_THRESHOLD:
                 error = right_ir - WALL_FOLLOW_THRESHOLD
-                correction = error * 0.002
+                correction = error * FOLLOW_TURN_GAIN
 
-                twist.linear.x = self.linear_speed
-                twist.angular.z = min(correction, self.angular_speed * 0.3)
+                target_linear = self.linear_speed * 1.1
+                target_angular = min(correction, self.angular_speed * 0.18)
 
             else:
-                twist.linear.x = self.linear_speed * 0.5
-                twist.angular.z = -self.angular_speed * 0.4
+                wall_recently_seen = (
+                    time.time() - self.last_wall_seen_time < WALL_MEMORY_SECONDS
+                )
+                if wall_recently_seen:
+                    target_linear = self.linear_speed * 1.05
+                    target_angular = -self.angular_speed * 0.12
+                else:
+                    target_linear = self.linear_speed * SEARCH_LINEAR_FACTOR
+                    target_angular = -self.angular_speed * SEARCH_ANGULAR_FACTOR
+
+            twist = self._make_smoothed_twist(target_linear, target_angular)
 
             self.cmd_vel_pub.publish(twist)
 
@@ -236,7 +260,21 @@ class BoundaryFollowServer(Node):
         return result
 
     def _stop(self):
+        self.last_linear_command = 0.0
+        self.last_angular_command = 0.0
         self.cmd_vel_pub.publish(Twist())
+
+    def _make_smoothed_twist(self, target_linear, target_angular):
+        twist = Twist()
+        self.last_linear_command += (
+            target_linear - self.last_linear_command
+        ) * COMMAND_SMOOTHING
+        self.last_angular_command += (
+            target_angular - self.last_angular_command
+        ) * COMMAND_SMOOTHING
+        twist.linear.x = self.last_linear_command
+        twist.angular.z = self.last_angular_command
+        return twist
 
 
 def main(args=None):
