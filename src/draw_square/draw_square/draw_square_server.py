@@ -43,11 +43,11 @@ class DrawSquareServer(Node):
 
         # Subscribers
         self.odom_sub = self.create_subscription(
-            Odometry, '/odom', self.odom_callback, 10,
+            Odometry, '/Robot5/odom', self.odom_callback, 10,
             callback_group=self.cb_group)
 
         # Publisher
-        self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
+        self.cmd_vel_pub = self.create_publisher(Twist, '/Robot5/cmd_vel', 10)
 
         # Action server
         self._action_server = ActionServer(
@@ -73,7 +73,6 @@ class DrawSquareServer(Node):
         siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
         cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
         self.current_yaw = math.atan2(siny_cosp, cosy_cosp)
-
 
     # Action callbacks
 
@@ -164,9 +163,7 @@ class DrawSquareServer(Node):
         self.get_logger().info(f'DrawSquare completed. Total distance: {total_distance:.2f}m')
         return result
 
-
     # Helpers
-
 
     def _stop(self):
         self.cmd_vel_pub.publish(Twist())
@@ -178,7 +175,6 @@ class DrawSquareServer(Node):
         while angle < -math.pi:
             angle += 2.0 * math.pi
         return angle
-
 
 def main(args=None):
     rclpy.init(args=args)

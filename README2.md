@@ -24,11 +24,10 @@ ros2 action send_goal /draw_square custom_interfaces/action/DrawSquare "{side_le
 
 # Boundary_follow 
 
-Terminal 1 
+Terminal 1 : simulator
 
 source /opt/ros/humble/setup.bash
 ros2 launch irobot_create_gazebo_bringup create3_gazebo.launch.py
-
 
 
 Terminal 2 :  Le serveur boundary_follow
