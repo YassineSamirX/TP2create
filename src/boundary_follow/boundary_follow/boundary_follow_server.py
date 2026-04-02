@@ -26,8 +26,11 @@ WALL_MEMORY_SECONDS = 1.0
 SEARCH_LINEAR_FACTOR = 0.9
 SEARCH_ANGULAR_FACTOR = 0.18
 TOO_CLOSE_LINEAR_FACTOR = 0.75
-FOLLOW_TURN_GAIN = 0.0012
-COMMAND_SMOOTHING = 0.5
+FOLLOW_TURN_GAIN = 0.0008          # Reduced from 0.0012
+COMMAND_SMOOTHING = 0.15           # Reduced from 0.5 (smoother transitions)
+IR_FILTER_ALPHA = 0.3              # Low-pass filter for IR sensors
+HYSTERESIS = 20                    # Prevents rapid state switching
+DERIVATIVE_GAIN = 0.002            # Dampens oscillations
 
 
 class BoundaryFollowServer(Node):
@@ -43,7 +46,6 @@ class BoundaryFollowServer(Node):
         self.linear_speed = self.get_parameter('linear_speed').value
         self.angular_speed = self.get_parameter('angular_speed').value
 
-        #  AJOUT QoS BEST_EFFORT
         qos_profile = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
             history=HistoryPolicy.KEEP_LAST,
@@ -64,8 +66,9 @@ class BoundaryFollowServer(Node):
         self.last_wall_seen_time = time.time()
         self.last_linear_command = 0.0
         self.last_angular_command = 0.0
+        self.last_right_ir = IR_MIN
+        self.current_state = 'SEARCH'
 
-        # ✅ MODIFIÉ (10 → qos_profile)
         self.ir_sub = self.create_subscription(
             IrIntensityVector,
             '/Robot5/ir_intensity',
@@ -73,7 +76,6 @@ class BoundaryFollowServer(Node):
             qos_profile,
             callback_group=self.cb_group)
 
-        # ✅ MODIFIÉ (10 → qos_profile)
         self.hazard_sub = self.create_subscription(
             HazardDetectionVector,
             '/Robot5/hazard_detection',
@@ -94,14 +96,18 @@ class BoundaryFollowServer(Node):
         )
 
         self.get_logger().info(
-            'BoundaryFollow action server ready (BEST_EFFORT)')
+            'BoundaryFollow action server ready (anti-jitter enabled)')
 
     def ir_callback(self, msg):
         for reading in msg.readings:
             frame = reading.header.frame_id
             key = frame.replace('ir_intensity_', '')
             if key in self.ir_values:
-                self.ir_values[key] = reading.value
+                # Low-pass filter to reduce sensor noise
+                self.ir_values[key] = (
+                    IR_FILTER_ALPHA * reading.value +
+                    (1 - IR_FILTER_ALPHA) * self.ir_values[key]
+                )
 
     def hazard_callback(self, msg):
         self.bump_detected = False
@@ -126,6 +132,28 @@ class BoundaryFollowServer(Node):
             self.ir_values['left'],
             self.ir_values['side_left'],
         )
+
+    def _get_state_with_hysteresis(self, front_ir, right_ir):
+        """Determine state with hysteresis to prevent rapid switching."""
+        if self.bump_detected:
+            return 'BUMP'
+        
+        if front_ir > FRONT_OBSTACLE_THRESHOLD + HYSTERESIS:
+            return 'FRONT_OBSTACLE'
+        elif self.current_state == 'FRONT_OBSTACLE' and front_ir > FRONT_OBSTACLE_THRESHOLD - HYSTERESIS:
+            return 'FRONT_OBSTACLE'
+        
+        if right_ir > WALL_TOO_CLOSE_THRESHOLD + HYSTERESIS:
+            return 'TOO_CLOSE'
+        elif self.current_state == 'TOO_CLOSE' and right_ir > WALL_TOO_CLOSE_THRESHOLD - HYSTERESIS:
+            return 'TOO_CLOSE'
+        
+        if right_ir > WALL_FOLLOW_THRESHOLD + HYSTERESIS:
+            return 'FOLLOWING'
+        elif self.current_state == 'FOLLOWING' and right_ir > WALL_FOLLOW_THRESHOLD - HYSTERESIS:
+            return 'FOLLOWING'
+        
+        return 'SEARCH'
 
     def goal_callback(self, goal_request):
         self.get_logger().info(
@@ -186,13 +214,20 @@ class BoundaryFollowServer(Node):
             front_ir = self.get_front_ir()
             right_ir = self.get_right_ir()
 
+            # Compute derivative for damping
+            ir_derivative = right_ir - self.last_right_ir
+            self.last_right_ir = right_ir
+
             if right_ir > WALL_LOST_THRESHOLD:
                 self.last_wall_seen_time = time.time()
 
             target_linear = 0.0
             target_angular = 0.0
 
-            if self.bump_detected:
+            # Use hysteresis-based state machine
+            self.current_state = self._get_state_with_hysteresis(front_ir, right_ir)
+
+            if self.current_state == 'BUMP':
                 self._stop()
                 time.sleep(0.1)
 
@@ -208,22 +243,24 @@ class BoundaryFollowServer(Node):
 
                 self.bump_detected = False
 
-            elif front_ir > FRONT_OBSTACLE_THRESHOLD:
+            elif self.current_state == 'FRONT_OBSTACLE':
                 target_linear = 0.0
                 target_angular = self.angular_speed
 
-            elif right_ir > WALL_TOO_CLOSE_THRESHOLD:
+            elif self.current_state == 'TOO_CLOSE':
                 target_linear = self.linear_speed * TOO_CLOSE_LINEAR_FACTOR
                 target_angular = self.angular_speed * 0.35
 
-            elif right_ir > WALL_FOLLOW_THRESHOLD:
+            elif self.current_state == 'FOLLOWING':
                 error = right_ir - WALL_FOLLOW_THRESHOLD
-                correction = error * FOLLOW_TURN_GAIN
+                # PD control: proportional + derivative
+                correction = error * FOLLOW_TURN_GAIN - ir_derivative * DERIVATIVE_GAIN
 
                 target_linear = self.linear_speed * 1.1
-                target_angular = min(correction, self.angular_speed * 0.18)
+                target_angular = max(-self.angular_speed * 0.3, 
+                                    min(correction, self.angular_speed * 0.18))
 
-            else:
+            else:  # SEARCH
                 wall_recently_seen = (
                     time.time() - self.last_wall_seen_time < WALL_MEMORY_SECONDS
                 )
