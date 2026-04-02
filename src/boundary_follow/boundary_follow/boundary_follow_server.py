@@ -77,26 +77,26 @@ class BoundaryFollowServer(Node):
         # Subscribers
         self.ir_sub = self.create_subscription(
             IrIntensityVector,
-            '/ir_intensity',
+            '/Robot5/ir_intensity',
             self.ir_callback,
             10,
             callback_group=self.cb_group)
 
         self.hazard_sub = self.create_subscription(
             HazardDetectionVector,
-            '/hazard_detection',
+            '/Robot5/hazard_detection',
             self.hazard_callback,
             10,
             callback_group=self.cb_group)
 
         # Publisher
-        self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
+        self.cmd_vel_pub = self.create_publisher(Twist, '/Robot5/cmd_vel', 10)
 
         # Action server
         self._action_server = ActionServer(
             self,
             BoundaryFollow,
-            '/boundary_follow',
+            '/Robot5/boundary_follow',
             execute_callback=self.execute_callback,
             goal_callback=self.goal_callback,
             cancel_callback=self.cancel_callback,
@@ -106,9 +106,7 @@ class BoundaryFollowServer(Node):
         self.get_logger().info(
             'BoundaryFollow action server ready (IR sensors) on /boundary_follow')
 
-    # ──────────────────────────────────────────────
     # Sensor callbacks
-    # ──────────────────────────────────────────────
 
     def ir_callback(self, msg):
         """Met à jour les valeurs IR depuis le message."""
@@ -128,9 +126,7 @@ class BoundaryFollowServer(Node):
                 self.bump_detected = True
                 self.get_logger().warn('BUMP détecté !')
 
-    # ──────────────────────────────────────────────
     # IR helpers
-    # ──────────────────────────────────────────────
 
     def get_front_ir(self):
         """Valeur maximale des capteurs frontaux."""
@@ -152,9 +148,7 @@ class BoundaryFollowServer(Node):
             self.ir_values['side_left'],
         )
 
-    # ──────────────────────────────────────────────
     # Action callbacks
-    # ──────────────────────────────────────────────
 
     def goal_callback(self, goal_request):
         self.get_logger().info(
